@@ -34,4 +34,4 @@ Here, $\mathbf{I}$ is replaced by a diagonal matrix $\mathbf{D}_t$. This transit
 
 ## Efficient Chunkwise Implementation
 
-For detailed information about efficient chunkwise implementation, please refer to our [technical note](https://drive.google.com/file/d/1rJbO3dU4fe7OKG3w7Yg058z_BNIuavNF/view?usp=sharing).
+For detailed information about efficient chunkwise implementation, please refer to our [technical note](https://drive.google.com/file/d/1qqc6THTRc2bw-LtwsbGNxNDw00sNzi5M/view?usp=sharing).
