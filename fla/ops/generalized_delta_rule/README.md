@@ -35,6 +35,8 @@ Here, $\mathbf{I}$ is replaced by a diagonal matrix $\mathbf{D}_t$. This transit
 ## Efficient Chunkwise Implementation
 The original [technical note](https://drive.google.com/file/d/1qqc6THTRc2bw-LtwsbGNxNDw00sNzi5M/view?usp=sharing) on chunking DPLR contains minor mathematical inconsistencies. Below, we re-do the computations.
 
+If you have questions about or comments on the below derivations, feel free to reach out: philipp.nazari@tuebingen.mpg.de.
+
 
 Our goal is to show how to efficiently compute the DPLR representation
 $$
@@ -68,10 +70,10 @@ $$
     \mathbf P_{t+1} &= \mathbf P_t (\mathbf D_{t+1} + \mathbf a_{t+1} \mathbf b_{t+1}^\top) \\
     &= \left( \mathbf \Gamma_{1}^t + \sum_{i=1}^t\mathbf w_i \mathbf b_i^\top \mathbf \Gamma_{i+1}^{t}  \right) \mathbf D_{t+1} + \left( \mathbf \Gamma_1^t + \sum_{i=1}^t \mathbf w_i \mathbf b_i^\top \mathbf \Gamma_{i+1}^{t} \right)\mathbf a_{t+1} \mathbf b_{t+1}^\top\\
     &= \mathbf \Gamma_{1}^{t+1} + \sum_{i=1}^t \mathbf w_i \mathbf b_i^\top \mathbf \Gamma_{i+1}^{t+1} + \underbrace{\left(\mathbf \Gamma_1^{t} \mathbf a_{t+1} + \sum_{i=1}^t \mathbf w_i \mathbf b_i^\top \mathbf \Gamma_{i+1}^{t}\mathbf a_{t+1}\right)}_{\eqqcolon \mathbf w_{t+1}} \mathbf b_{t+1}^\top \\
-    &= \mathbf \Gamma_1^{t+1} + \sum_{i=1}^{t+1} \mathbf w_i \mathbf b_i^\top \mathbf \Gamma_i^{t},
+    &= \mathbf \Gamma_1^{t+1} + \sum_{i=1}^{t+1} \mathbf w_i \mathbf b_i^\top \mathbf \Gamma_{i+1}^{t+1},
 \end{align*}
 $$
-where we used $\mathbf \Gamma_{t+1}^t = \mathbf I$ in the last step. 
+where we used $\mathbf \Gamma_{t+2}^{t+1} = \mathbf I$ in the last step. 
 
 ### $WY$ Representation for $S_t$
 The $WY$ representation for $\mathbf S_t$ reads
@@ -85,14 +87,14 @@ $$
         \sum_{j=1}^{i-1} \left( \mathbf v_j \mathbf k_j^\top + \mathbf u_j \mathbf b_j^\top \right) \mathbf \Gamma_{j+1}^{i-1} \mathbf a_i, & i \geq 2.
     \end{cases}
 $$
-We again show this claim by induction. The base case $t=1$ is clear, once we realize that $\mathbf u_1 \coloneqq 0$ and $\mathbf \Gamma_2^0 \coloneqq \mathbf I$.
+We again show this claim by induction. The base case $t=1$ is clear, once we realize that $\mathbf u_1 \coloneqq 0$ and $\mathbf \Gamma_2^1 \coloneqq \mathbf I$.
 
 For the induction step, we compute
 $$
 \begin{align*}
-    \mathbf S_{t+1} &= \mathbf S_t (\mathbf D_{t+1} + \mathbf a_{t+1} \mathbf b_{t+1}^\top) + \mathbf v_{t+1} \mathbf k_{t+1} \\
-    &= \left[\sum_{i=1}^t (\mathbf v_i \mathbf k_i^\top + \mathbf u_i \mathbf b_i^\top) \mathbf \Gamma_{i+1}^{t}\right] \left(\mathbf D_{t+1} + \mathbf a_{t+1}\mathbf b_{t+1}^\top\right) + \mathbf v_{t+1} \mathbf k_{t+1} \\
-    &= \sum_{i=1}^t  (\mathbf v_i \mathbf k_i^\top + \mathbf u_i \mathbf b_i^\top) \mathbf \Gamma_{i+1}^{t+1} + \underbrace{\left[ \sum_{i=1}^t  \left(\mathbf v_i\mathbf k_i^\top + \mathbf u_i\mathbf b_i^\top)\mathbf \Gamma_{i+1}^{t}\mathbf a_{t+1}\right) \right]}_{\eqqcolon \mathbf u_{t+1}}\mathbf b_{t+1}^\top + \mathbf v_{t+1}\mathbf k_{t+1}^\top \\
+    \mathbf S_{t+1} &= \mathbf S_t (\mathbf D_{t+1} + \mathbf a_{t+1} \mathbf b_{t+1}^\top) + \mathbf v_{t+1} \mathbf k_{t+1}^\top \\
+    &= \left[\sum_{i=1}^t (\mathbf v_i \mathbf k_i^\top + \mathbf u_i \mathbf b_i^\top) \mathbf \Gamma_{i+1}^{t}\right] \left(\mathbf D_{t+1} + \mathbf a_{t+1}\mathbf b_{t+1}^\top\right) + \mathbf v_{t+1} \mathbf k_{t+1}^\top \\
+    &= \sum_{i=1}^t  (\mathbf v_i \mathbf k_i^\top + \mathbf u_i \mathbf b_i^\top) \mathbf \Gamma_{i+1}^{t+1} + \underbrace{\left[ \sum_{i=1}^t  \left(\mathbf v_i\mathbf k_i^\top + \mathbf u_i\mathbf b_i^\top \right)\mathbf \Gamma_{i+1}^{t}\mathbf a_{t+1} \right]}_{\eqqcolon \mathbf u_{t+1}}\mathbf b_{t+1}^\top + \mathbf v_{t+1}\mathbf k_{t+1}^\top \\
     &= \sum_{i=1}^{t+1} (\mathbf v_i \mathbf k_i^\top + \mathbf u_i \mathbf b_i^\top ) \mathbf \Gamma_{i+1}^{t+1},
 \end{align*}
 $$
