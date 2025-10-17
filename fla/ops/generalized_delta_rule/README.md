@@ -73,7 +73,7 @@ For the induction step, note that
     &= \mathbf \Gamma_1^{t+1} + \sum_{i=1}^{t+1} \mathbf w_i \mathbf b_i^\top \mathbf \Gamma_{i+1}^{t+1},
 \end{align*}
 ```
-where we used $\mathbf \Gamma_{t+2}^{t+1} = \mathbf I$ in the last step. 
+where we used $\mathbf \Gamma_{t+2}^{t+1} = \mathbf I$ in the last step.
 
 ### $WY$ Representation for $S_t$
 The $WY$ representation for $\mathbf S_t$ reads
