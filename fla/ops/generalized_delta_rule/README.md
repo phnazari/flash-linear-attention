@@ -35,8 +35,7 @@ Here, $\mathbf{I}$ is replaced by a diagonal matrix $\mathbf{D}_t$. This transit
 ## Efficient Chunkwise Implementation
 The original [technical note](https://drive.google.com/file/d/1qqc6THTRc2bw-LtwsbGNxNDw00sNzi5M/view?usp=sharing) on chunking DPLR contains minor mathematical inconsistencies. Below, we re-do the computations.
 
-If you have questions about or comments on the below derivations, feel free to reach out: philipp.nazari@tuebingen.mpg.de.
-
+If you have questions about or comments about the below derivations, feel free to [reach out](https://phnazari.github.io).
 
 Our goal is to show how to efficiently compute the DPLR representation
 $$
