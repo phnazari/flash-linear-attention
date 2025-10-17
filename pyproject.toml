@@ -17,18 +17,19 @@ classifiers = [
 requires-python = ">=3.10"
 dependencies = [
     "torch>=2.5",
-    "transformers>=4.45.0",
+    "transformers>=4.53.0",
     "datasets>=3.3.0",
     "einops",
-    "pytest",
 ]
 
 [project.optional-dependencies]
 conv1d = ["causal-conv1d>=1.4.0"]
 benchmark = ["matplotlib"]
+test = ["pytest"]
 
 [project.urls]
 Homepage = "https://github.com/fla-org/flash-linear-attention"
+Repository = "https://github.com/fla-org/flash-linear-attention"
 
 [build-system]
 requires = ["setuptools>=45", "wheel"]
@@ -40,3 +41,6 @@ multi_line_output = 3
 [tool.pytest.ini_options]
 log_cli = true
 log_cli_level = "INFO"
+pythonpath = [
+  "."
+]

@@ -19,15 +19,20 @@ from typing import Any, Dict, Optional, Tuple, Union
 import torch
 from torch import nn
 from transformers.configuration_utils import PretrainedConfig
-from transformers.generation import GenerationMixin
 from transformers.modeling_utils import PreTrainedModel
 from transformers.utils import ModelOutput, logging
 from transformers.utils.deprecation import deprecate_kwarg
 
 from fla.layers.mamba import Mamba
 from fla.models.mamba.configuration_mamba import MambaConfig
+from fla.models.utils import FLAGenerationMixin
 from fla.modules import FusedCrossEntropyLoss, FusedLinearCrossEntropyLoss, RMSNorm
 from fla.modules.l2warp import l2_warp
+
+try:
+    from transformers.modeling_layers import GradientCheckpointingLayer
+except ImportError:
+    from fla.models.modeling_layers import GradientCheckpointingLayer
 
 logger = logging.get_logger(__name__)
 
@@ -140,7 +145,8 @@ class MambaCache:
         self.ssm_states.zero_()
 
 
-class MambaBlock(nn.Module):
+class MambaBlock(GradientCheckpointingLayer):
+
     def __init__(self, config, layer_idx):
         super().__init__()
         self.config = config
@@ -345,9 +351,6 @@ class MambaModel(MambaPreTrainedModel):
         if inputs_embeds is None:
             inputs_embeds = self.embeddings(input_ids)
 
-        if self.gradient_checkpointing and self.training and use_cache:
-            use_cache = False
-
         if use_cache:
             if cache_params is None:
                 cache_params = MambaCache(
@@ -369,17 +372,12 @@ class MambaModel(MambaPreTrainedModel):
         hidden_states = inputs_embeds
         all_hidden_states = () if output_hidden_states else None
         for mixer_block in self.layers:
-            if self.gradient_checkpointing and self.training:
-                hidden_states = self._gradient_checkpointing_func(
-                    mixer_block.__call__, hidden_states, cache_params, cache_position, attention_mask
-                )
-            else:
-                hidden_states = mixer_block(
-                    hidden_states,
-                    cache_params=cache_params,
-                    cache_position=cache_position,
-                    attention_mask=attention_mask,
-                )
+            hidden_states = mixer_block(
+                hidden_states,
+                cache_params=cache_params,
+                cache_position=cache_position,
+                attention_mask=attention_mask,
+            )
 
             if output_hidden_states:
                 all_hidden_states = all_hidden_states + (hidden_states,)
@@ -399,7 +397,7 @@ class MambaModel(MambaPreTrainedModel):
         )
 
 
-class MambaForCausalLM(MambaPreTrainedModel, GenerationMixin):
+class MambaForCausalLM(MambaPreTrainedModel, FLAGenerationMixin):
 
     _tied_weights_keys = ["lm_head.weight"]
 
@@ -445,56 +443,6 @@ class MambaForCausalLM(MambaPreTrainedModel, GenerationMixin):
             )
 
         return model_kwargs
-
-    @deprecate_kwarg("num_logits_to_keep", version="4.50", new_name="logits_to_keep")
-    def prepare_inputs_for_generation(
-        self,
-        input_ids,
-        inputs_embeds=None,
-        use_cache=None,
-        cache_params: Optional[MambaCache] = None,
-        cache_position: Optional[torch.LongTensor] = None,
-        attention_mask: Optional[torch.LongTensor] = None,
-        logits_to_keep: Optional[int] = None,
-        **kwargs,
-    ):
-        if use_cache:
-            # `cache_position` should have been initialized in `generate`
-            if cache_position is None:
-                raise ValueError(
-                    "`cache_position` should not be None as it should have been initialized in "
-                    "`model.generate`, you are responsible for passing in a valid `cache_position` if "
-                    "you are calling `prepare_inputs_for_generation` directly with `use_cache=True`"
-                )
-            if cache_position[0] > 0:
-                input_ids = input_ids[:, -1].unsqueeze(-1)
-
-                if attention_mask is not None:
-                    attention_mask = None
-
-            else:
-                # we initialize the `cache_position` to full size of `conv_states` at prefill stage
-                # considering padding will be applied when input length is shorter, and truncation
-                # will be applied when it is longer, so it will be equivalent to always have it match
-                # the length of `cache_params.conv_states`, which is `config.conv_kernel`
-                cache_position = torch.arange(0, self.config.conv_kernel, device=input_ids.device)
-
-        if inputs_embeds is not None and cache_params is None:
-            model_inputs = {"inputs_embeds": inputs_embeds}
-        else:
-            model_inputs = {"input_ids": input_ids.contiguous()}
-
-        if logits_to_keep is not None:
-            model_inputs['logits_to_keep'] = logits_to_keep
-
-        model_inputs.update({
-            'cache_params': cache_params,
-            'use_cache': use_cache,
-            'cache_position': cache_position,
-            'attention_mask': attention_mask,
-            'logits_to_keep': logits_to_keep,
-        })
-        return model_inputs
 
     @deprecate_kwarg("num_logits_to_keep", version="4.50", new_name="logits_to_keep")
     def forward(

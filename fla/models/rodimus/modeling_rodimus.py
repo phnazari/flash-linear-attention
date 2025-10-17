@@ -9,7 +9,6 @@ from typing import TYPE_CHECKING, Dict, List, Optional, Tuple, Union
 
 import torch
 import torch.nn as nn
-from transformers.generation import GenerationMixin
 from transformers.modeling_outputs import BaseModelOutputWithPast, CausalLMOutputWithPast
 from transformers.modeling_utils import PreTrainedModel
 from transformers.utils import logging
@@ -18,7 +17,7 @@ from transformers.utils.deprecation import deprecate_kwarg
 from fla.layers.attn import Attention
 from fla.layers.rodimus import RodimusAttention, SlidingWindowSharedKeyAttention, align_multiple
 from fla.models.rodimus.configuration_rodimus import RodimusConfig
-from fla.models.utils import Cache
+from fla.models.utils import Cache, FLAGenerationMixin
 from fla.modules import FusedCrossEntropyLoss, FusedLinearCrossEntropyLoss
 from fla.modules import GatedMLP as RodimusMLP
 from fla.modules import RMSNorm
@@ -32,10 +31,17 @@ except (ImportError, AttributeError):
 if TYPE_CHECKING:
     from transformers.processing_utils import Unpack
 
+
+try:
+    from transformers.modeling_layers import GradientCheckpointingLayer
+except ImportError:
+    from fla.models.modeling_layers import GradientCheckpointingLayer
+
 logger = logging.get_logger(__name__)
 
 
-class RodimusBlock(nn.Module):
+class RodimusBlock(GradientCheckpointingLayer):
+
     def __init__(self, config: RodimusConfig, layer_idx: int):
         super().__init__()
 
@@ -392,10 +398,6 @@ class RodimusModel(RodimusPreTrainedModel):
         if use_cache and not isinstance(past_key_values, Cache):
             past_key_values = Cache.from_legacy_cache(past_key_values)
 
-        if self.gradient_checkpointing and self.training and use_cache:
-            logger.warning_once("`use_cache=True` is incompatible with gradient checkpointing. Setting `use_cache=False`...")
-            use_cache = False
-
         all_hidden_states = () if output_hidden_states else None
         all_attns = () if output_attentions else None
         residual = None
@@ -403,27 +405,15 @@ class RodimusModel(RodimusPreTrainedModel):
             if output_hidden_states:
                 all_hidden_states += (hidden_states,)
 
-            if self.gradient_checkpointing and self.training:
-                hidden_states, attentions, past_key_values = self._gradient_checkpointing_func(
-                    layer.__call__,
-                    hidden_states,
-                    attention_mask,
-                    past_key_values,
-                    use_cache,
-                    output_attentions,
-                    residual,
-                    **kwargs
-                )
-            else:
-                hidden_states, attentions, past_key_values = layer(
-                    hidden_states,
-                    attention_mask=attention_mask,
-                    past_key_values=past_key_values,
-                    use_cache=use_cache,
-                    output_attentions=output_attentions,
-                    residual=residual,
-                    **kwargs
-                )
+            hidden_states, attentions, past_key_values = layer(
+                hidden_states,
+                attention_mask=attention_mask,
+                past_key_values=past_key_values,
+                use_cache=use_cache,
+                output_attentions=output_attentions,
+                residual=residual,
+                **kwargs
+            )
 
             if self.block_residual_in_fp32:
                 hidden_states, residual = hidden_states
@@ -457,7 +447,7 @@ class RodimusModel(RodimusPreTrainedModel):
         )
 
 
-class RodimusForCausalLM(RodimusPreTrainedModel, GenerationMixin):
+class RodimusForCausalLM(RodimusPreTrainedModel, FLAGenerationMixin):
 
     _tied_weights_keys = ["lm_head.weight"]
 
@@ -503,40 +493,6 @@ class RodimusForCausalLM(RodimusPreTrainedModel, GenerationMixin):
                 )
             else:
                 raise exception
-
-    @deprecate_kwarg("num_logits_to_keep", version="4.50", new_name="logits_to_keep")
-    def prepare_inputs_for_generation(
-        self,
-        input_ids: torch.LongTensor = None,
-        past_key_values: Optional[Union[Cache, List[torch.FloatTensor]]] = None,
-        attention_mask: Optional[torch.Tensor] = None,
-        inputs_embeds: Optional[torch.Tensor] = None,
-        use_cache: bool = True,
-        logits_to_keep: Optional[int] = None,
-        **kwargs
-    ):
-        # only last token for `inputs_ids` if the `past_key_values` is not empty.
-        if past_key_values is not None and len(past_key_values) > 0:
-            input_ids = input_ids[:, -1:]
-        # if `inputs_embeds` are passed, we only want to use them in the 1st generation step
-        if inputs_embeds is not None and len(past_key_values) == 0:
-            model_inputs = {'inputs_embeds': inputs_embeds}
-        else:
-            # The `contiguous()` here is necessary to have a static stride during decoding. torchdynamo otherwise
-            # recompiles graphs as the stride of the inputs is a guard.
-            # Ref: https://github.com/huggingface/transformers/pull/29114
-            # TODO: use `next_tokens` directly instead.
-            model_inputs = {'input_ids': input_ids.contiguous()}
-
-        if logits_to_keep is not None:
-            model_inputs['logits_to_keep'] = logits_to_keep
-
-        model_inputs.update({
-            'past_key_values': past_key_values,
-            'use_cache': use_cache,
-            'attention_mask': attention_mask,
-        })
-        return model_inputs
 
     @deprecate_kwarg("num_logits_to_keep", version="4.50", new_name="logits_to_keep")
     def forward(

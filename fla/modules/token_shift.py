@@ -7,7 +7,7 @@ import triton
 import triton.language as tl
 
 from fla.ops.utils import prepare_chunk_indices
-from fla.utils import get_multiprocessor_count, input_guard, is_amd, tensor_cache
+from fla.utils import autotune_cache_kwargs, get_multiprocessor_count, input_guard, is_amd, tensor_cache
 
 NUM_WARPS_AUTOTUNE = [2, 4, 8, 16] if is_amd else [2, 4, 8, 16, 32]
 
@@ -59,6 +59,7 @@ def token_shift_ref(
         for num_stages in [1, 2, 3]
     ],
     key=['BD'],
+    **autotune_cache_kwargs
 )
 @triton.jit
 def token_shift_fwd_kernel_short(
@@ -106,7 +107,7 @@ def token_shift_fwd_kernel_short(
     else:
         cache_offset = i_b * D + o_d  # i_b is batch index
 
-    if IS_DECODE:
+    if IS_DECODE and USE_INITIAL_STATE:
         b_cache = tl.load(cache + cache_offset, mask=m_d)
         delta = b_cache - b_x
         tl.store(y + base_offset, delta, mask=m_d)
@@ -149,7 +150,8 @@ def token_shift_fwd_kernel_short(
         for num_warps in NUM_WARPS_AUTOTUNE
         for num_stages in [1, 2, 3]
     ],
-    key=['BD', 'NB']
+    key=['BD', 'NB'],
+    **autotune_cache_kwargs
 )
 @triton.jit
 def token_shift_fwd_kernel_long(
@@ -223,6 +225,7 @@ def token_shift_fwd_kernel_long(
         for num_stages in [1, 2, 3]
     ],
     key=['BD'],
+    **autotune_cache_kwargs
 )
 @triton.jit
 def token_shift_bwd_kernel_short(
@@ -299,7 +302,8 @@ def token_shift_bwd_kernel_short(
         for num_warps in NUM_WARPS_AUTOTUNE
         for num_stages in [1, 2, 3]
     ],
-    key=['BD', 'NB']
+    key=['BD', 'NB'],
+    **autotune_cache_kwargs
 )
 @triton.jit
 def token_shift_bwd_kernel_long(
@@ -443,12 +447,7 @@ def token_shift_bwd(
     BD = triton.next_power_of_2(D)
     dx = torch.empty_like(dy)
     if has_init_cache:
-        if cu_seqlens is not None:
-            # TODO It's not clear how to design and calculate the gradient, need to
-            # think about it later.
-            raise NotImplementedError("Initial cache is not supported for variable length sequences")
-        else:
-            grad_cache_out = torch.empty((N, D), device=dy.device, dtype=dy.dtype)
+        grad_cache_out = torch.empty((N, D), device=dy.device, dtype=dy.dtype)
     else:
         grad_cache_out = None
     if use_short_kernel:

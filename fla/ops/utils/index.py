@@ -8,7 +8,7 @@ import torch.nn.functional as F
 import triton
 import triton.language as tl
 
-from fla.utils import tensor_cache
+from fla.utils import autotune_cache_kwargs, tensor_cache
 
 
 @triton.autotune(
@@ -17,6 +17,7 @@ from fla.utils import tensor_cache
         for num_warps in [4, 8, 16, 32]
     ],
     key=['B'],
+    **autotune_cache_kwargs
 )
 @triton.jit
 def prepare_position_ids_kernel(
@@ -45,11 +46,26 @@ def prepare_lens_from_mask(mask: torch.BoolTensor) -> torch.LongTensor:
 
 
 @tensor_cache
+def prepare_cu_seqlens_from_lens(
+    lens: torch.LongTensor,
+    dtype: Optional[torch.dtype] = torch.int32
+) -> torch.LongTensor:
+    return F.pad(lens.cumsum(dim=0, dtype=dtype), (1, 0))
+
+
+@tensor_cache
 def prepare_cu_seqlens_from_mask(
     mask: torch.BoolTensor,
     dtype: Optional[torch.dtype] = torch.int32
 ) -> torch.LongTensor:
-    return F.pad(prepare_lens_from_mask(mask).cumsum(dim=0, dtype=dtype), (1, 0))
+    return prepare_cu_seqlens_from_lens(prepare_lens_from_mask(mask), dtype)
+
+
+@tensor_cache
+def prepare_lens_from_cu_seqlens(
+    cu_seqlens: torch.LongTensor,
+) -> torch.LongTensor:
+    return cu_seqlens[1:] - cu_seqlens[:-1]
 
 
 @tensor_cache
@@ -111,3 +127,8 @@ def prepare_chunk_offsets(
     chunk_size: int
 ) -> torch.LongTensor:
     return torch.cat([cu_seqlens.new_tensor([0]), triton.cdiv(prepare_lens(cu_seqlens), chunk_size)]).cumsum(-1)
+
+
+@tensor_cache
+def get_max_num_splits(cu_seqlens: torch.LongTensor, chunk_size: int) -> int:
+    return triton.cdiv(int(max(prepare_lens(cu_seqlens))), chunk_size)

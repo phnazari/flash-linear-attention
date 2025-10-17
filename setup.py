@@ -40,13 +40,13 @@ setup(
     python_requires='>=3.10',
     install_requires=[
         'torch>=2.5',
-        'transformers>=4.45.0',
+        'transformers>=4.53.0',
         'datasets>=3.3.0',
-        'einops',
-        'pytest'
+        'einops'
     ],
     extras_require={
         'conv1d': ['causal-conv1d>=1.4.0'],
         'benchmark': ['matplotlib'],
+        'test': ['pytest'],
     }
 )

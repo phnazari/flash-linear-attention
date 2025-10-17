@@ -7,6 +7,7 @@ from .based import BasedLinearAttention
 from .bitattn import BitAttention
 from .comba import Comba
 from .delta_net import DeltaNet
+from .deltaformer import DeltaFormerAttention
 from .forgetting_attn import ForgettingAttention
 from .gated_deltanet import GatedDeltaNet
 from .gated_deltaproduct import GatedDeltaProduct
@@ -16,10 +17,12 @@ from .hgrn import HGRNAttention
 from .hgrn2 import HGRN2Attention
 from .lightnet import LightNetAttention
 from .linear_attn import LinearAttention
+from .log_linear_mamba2 import LogLinearMamba2
 from .mamba import Mamba
 from .mamba2 import Mamba2
 from .mesa_net import MesaNet
 from .mla import MultiheadLatentAttention
+from .mom import MomAttention
 from .multiscale_retention import MultiScaleRetention
 from .nsa import NativeSparseAttention
 from .path_attn import PaTHAttention
@@ -44,9 +47,11 @@ __all__ = [
     'HGRN2Attention',
     'LightNetAttention',
     'LinearAttention',
+    'LogLinearMamba2',
     'Mamba',
     'Mamba2',
     'MesaNet',
+    'MomAttention',
     'MultiheadLatentAttention',
     'MultiScaleRetention',
     'NativeSparseAttention',
@@ -56,4 +61,5 @@ __all__ = [
     'RWKV6Attention',
     'RWKV7Attention',
     'SlidingWindowSharedKeyAttention',
+    'DeltaFormerAttention',
 ]

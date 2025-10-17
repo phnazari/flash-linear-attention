@@ -5,6 +5,7 @@ from typing import List
 
 import pytest
 import torch
+import torch.nn.functional as F
 from einops import rearrange
 
 from fla.ops.path_attn.parallel import parallel_path_attention
@@ -15,7 +16,7 @@ def naive_path_attn(q, k, v, w, beta, g, scale, BT=64):
     original_dtype = q.dtype
     HQ = q.shape[2]
     H = k.shape[2]
-    q, k, v, w, beta, g = map(lambda x: x.to(torch.float32).transpose(1, 2), [q, k, v, w, beta, g])
+    q, k, v, w, beta, g = map(lambda x: x.to(torch.float).transpose(1, 2), [q, k, v, w, beta, g])
     g_cumsum = g.cumsum(-1)
     q = q.unsqueeze(2).expand(-1, -1, HQ//HQ, -1, -1).flatten(1, 2)
     k = k.unsqueeze(2).expand(-1, -1, HQ//H, -1, -1).flatten(1, 2)
@@ -23,11 +24,11 @@ def naive_path_attn(q, k, v, w, beta, g, scale, BT=64):
     w = w.unsqueeze(2).expand(-1, -1, HQ//H, -1, -1).flatten(1, 2)
     beta = beta.unsqueeze(2).expand(-1, -1, HQ//H, -1).flatten(1, 2)
 
-    b, h, l, d_k = q.shape
+    b, h, l, _ = q.shape
     if l % BT != 0:
         padding_size = BT - l % BT
-        q, k, w = map(lambda x: torch.nn.functional.pad(x, (0, 0, 0, padding_size)), [q, k, w])
-        beta = torch.nn.functional.pad(beta, (0, padding_size))
+        q, k, w = map(lambda x: F.pad(x, (0, 0, 0, padding_size)), [q, k, w])
+        beta = F.pad(beta, (0, padding_size))
     seq_len = q.shape[2]
     w_beta = w * beta[..., None]
     q, k, w, w_beta = map(lambda x: rearrange(x, 'b h (n c) d -> b h n c d', c=BT), [q, k, w, w_beta])
@@ -94,8 +95,8 @@ def test_parallel(
     q = torch.randn((B, T, HQ, D), dtype=dtype, device=device).requires_grad_(True)
     k = torch.randn((B, T, H, D), dtype=dtype, device=device).requires_grad_(True)
     v = torch.randn((B, T, H, D), dtype=dtype, device=device).requires_grad_(True)
-    w = torch.nn.functional.normalize(torch.randn((B, T, H, D), dtype=dtype, device=device), dim=-1, p=2).requires_grad_(True)
-    beta = torch.empty((B, T, H), dtype=dtype, device=device).uniform_(1.5, 2.0).requires_grad_(True)
+    w = F.normalize(torch.randn((B, T, H, D), dtype=torch.float, device=device), dim=-1, p=2).requires_grad_(True)
+    beta = torch.empty((B, T, H), dtype=torch.float, device=device).uniform_(1.5, 2.0).requires_grad_(True)
     if use_forget_gate:
         g = torch.empty((B, T, HQ), dtype=torch.float, device=device).uniform_(
             0.95, 1).log().requires_grad_(True)
@@ -138,9 +139,11 @@ def test_parallel(
     [
         pytest.param(*test, id="H{}-HQ{}-D{}-use_forget_gate{}-cu_seqlens{}-{}".format(*test))
         for test in [
-            (2, 4, 128, False, [0, 15, 69, 211, 300, 1200, 1222, 1849, 2000], torch.float16),
-            (2, 4, 64, True, [0, 100, 300, 1000, 1989, 2000], torch.float16),
-            (2, 4, 64, False, [0, 15, 69, 211, 300, 1200, 1222, 1849, 2000], torch.float16),
+            (2, 4, 128, False, [0, 15, 333, 2048], torch.float16),
+            (2, 4, 128, True, [0, 15, 333, 2048], torch.float16),
+            (2, 4, 64, True, [0, 841, 889, 4096], torch.float16),
+            (2, 4, 64, False, [0, 841, 889, 2000, 3000, 4096], torch.float16),
+            (2, 16, 128, True, [0, 500, 1023, 2000, 3000, 4096], torch.float16),
         ]
     ]
 )
@@ -168,11 +171,10 @@ def test_parallel_varlen(
     q = torch.randn((1, T, HQ, D), dtype=dtype, device=device).requires_grad_(True)
     k = torch.randn((1, T, H, D), dtype=dtype, device=device).requires_grad_(True)
     v = torch.randn((1, T, H, D), dtype=dtype, device=device).requires_grad_(True)
-    w = torch.nn.functional.normalize(torch.randn((1, T, H, D), dtype=dtype, device=device), dim=-1, p=2).requires_grad_(True)
-    beta = torch.rand((1, T, H), dtype=dtype, device=device).sigmoid().requires_grad_(True)
+    w = F.normalize(torch.randn((1, T, H, D), dtype=torch.float, device=device), dim=-1, p=2).requires_grad_(True)
+    beta = torch.rand((1, T, H), dtype=torch.float, device=device).sigmoid().requires_grad_(True)
     if use_forget_gate:
-        g = torch.empty((1, T, HQ), dtype=torch.float, device=device).uniform_(
-            0.95, 1).log().requires_grad_(True)
+        g = torch.empty((1, T, HQ), dtype=torch.float, device=device).uniform_(0.95, 1).log().requires_grad_(True)
     else:
         g = None
     do = torch.randn((1, T, HQ, D), dtype=dtype, device=device)
